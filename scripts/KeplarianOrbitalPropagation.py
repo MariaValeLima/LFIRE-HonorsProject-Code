@@ -13,6 +13,7 @@ from tudatpy.astro.time_representation import DateTime
 # Load spice kernels
 spice.load_standard_kernels()
 
+print("loaded everything")
 
 ##Now we start configuring how long we want to propagate it for
 simulation_start_epoch = DateTime(2026, 1, 14).to_epoch()
