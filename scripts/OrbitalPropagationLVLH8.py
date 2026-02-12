@@ -7,6 +7,9 @@ from tudatpy.astro import element_conversion
 from tudatpy.util import result2array
 from tudatpy.astro.time_representation import DateTime
 
+from Functions.formation_frames import apply_relative_state_lvlh
+
+
 spice.load_standard_kernels()
 
 # Simulation time
@@ -53,7 +56,10 @@ integrator_settings = propagation_setup.integrator.runge_kutta_fixed_step(
     coefficient_set=propagation_setup.integrator.CoefficientSets.rk_4
 )
 
-# Mothership base orbit 
+
+# STEP 1: mothership orbit -> ECI
+
+# Mothership base orbit
 mu_earth = bodies.get("Earth").gravitational_parameter
 
 base_kepler = dict(
@@ -65,41 +71,42 @@ base_kepler = dict(
     true_anomaly=3.07018490e+00,
 )
 
-# Offsets to the sattelites orbits
-offsets = [
-    (+15e3,  0.0),
-    (-15e3,  0.0),
-    ( 0.0,  +np.deg2rad(0.123)),
-    ( 0.0,  -np.deg2rad(0.123)),
-]
-
-#Build initial cartesian states for all sats
+# Build initial cartesian states list (for now: ONLY has the mothership)
 initial_states_list = []
 
-# mothership first
-# keplarian to catrtesian elementwise - conversts orbital elements to states
+# Mothership first (Keplerian -> ECI Cartesian)
 state0 = element_conversion.keplerian_to_cartesian_elementwise(
     gravitational_parameter=mu_earth,
     **base_kepler
 )
 initial_states_list.append(state0)
 
-# swarm - loop once per offset pair (4times), copy the mothership settings, then apply the offsets to a and nu. Then they are converted to cartesian state
-for (da_m, dnu_rad) in offsets:
-    kep = base_kepler.copy()
-    kep["semi_major_axis"] = base_kepler["semi_major_axis"] + da_m
-    kep["true_anomaly"]    = base_kepler["true_anomaly"] + dnu_rad
+#split mothership state into r0, v0
+r0 = state0[:3]
+v0 = state0[3:]
 
-    state_i = element_conversion.keplerian_to_cartesian_elementwise(
-        gravitational_parameter=mu_earth,
-        **kep
-    )
+# Optional quick sanity print
+print("Mothership |r0| [km] =", np.linalg.norm(r0)/1e3)
+print("Mothership |v0| [m/s] =", np.linalg.norm(v0))
+
+
+R = 15e3  # meters
+thetas = np.deg2rad([0, 90, 180, 270])
+
+initial_states_list = [state0]
+
+for th in thetas:
+    dr_lvlh = np.array([R*np.cos(th), R*np.sin(th), 0.0])
+    dv_lvlh = np.array([0.0, 0.0, 0.0])  # start simple
+
+    r_i, v_i = apply_relative_state_lvlh(r0, v0, dr_lvlh, dv_lvlh)
+    state_i = np.hstack((r_i, v_i))
     initial_states_list.append(state_i)
 
 # Stack into one big initial state vector
 initial_state = np.hstack(initial_states_list)
 
-# Propagate 
+# Propagate
 propagator_settings = propagation_setup.propagator.translational(
     central_bodies,
     acceleration_models,
@@ -115,7 +122,7 @@ dynamics_simulator = simulator.create_dynamics_simulator(bodies, propagator_sett
 states = dynamics_simulator.propagation_results.state_history
 states_array = result2array(states)
 
-#extract r and v for every sat 
+#extract r and v for every sat
 t = states_array[:, 0]  # seconds
 t_hours = (t - t[0]) / 3600.0
 
@@ -125,7 +132,6 @@ for i, name in enumerate(sat_names):
     r = states_array[:, c:c+3]
     v = states_array[:, c+3:c+6]
     rv[name] = (r, v)
-
 
 #Plot: extract each satellite position block
 fig = plt.figure(figsize=(6, 6), dpi=125)
@@ -146,10 +152,31 @@ ax.set_ylabel("y [m]")
 ax.set_zlabel("z [m]")
 ax.set_aspect("equal")
 plt.show(block=False)
+
+mu = mu_earth 
+# ---------- 3D Trajectories in ECI ----------
+fig = plt.figure(figsize=(6, 6), dpi=125)
+ax = fig.add_subplot(111, projection="3d")
+ax.set_title("5-sat swarm trajectories around Earth (ECI)")
+
+for name in sat_names:
+    r, v = rv[name]
+    ax.plot(r[:, 0], r[:, 1], r[:, 2], label=name)
+
+ax.scatter(0.0, 0.0, 0.0, label="Earth", marker="o")
+ax.legend()
+ax.set_xlabel("x [m]")
+ax.set_ylabel("y [m]")
+ax.set_zlabel("z [m]")
+ax.set_box_aspect((1, 1, 1))  # better than set_aspect("equal") for 3D
+plt.tight_layout()
+plt.show(block=False)
+
+# ---------- Radius magnitude ----------
 plt.figure(figsize=(10,4), dpi=125)
 for name in sat_names:
     r, v = rv[name]
-    rnorm_km = np.linalg.norm(r, axis=1)/1e3
+    rnorm_km = np.linalg.norm(r, axis=1) / 1e3
     plt.plot(t_hours, rnorm_km, label=name)
 plt.xlabel("Time [hr]")
 plt.ylabel("||r|| [km]")
@@ -158,6 +185,7 @@ plt.legend(ncol=2)
 plt.tight_layout()
 plt.show(block=False)
 
+# ---------- Speed magnitude ----------
 plt.figure(figsize=(10,4), dpi=125)
 for name in sat_names:
     r, v = rv[name]
@@ -170,8 +198,8 @@ plt.legend(ncol=2)
 plt.tight_layout()
 plt.show(block=False)
 
+# ---------- Components of r and v ----------
 fig, axs = plt.subplots(2, 3, figsize=(12,7), sharex=True, dpi=125)
-
 for name in sat_names:
     r, v = rv[name]
     axs[0,0].plot(t_hours, r[:,0]/1e3, label=name)
@@ -185,13 +213,11 @@ for name in sat_names:
 axs[0,0].set_ylabel("x [km]"); axs[0,1].set_ylabel("y [km]"); axs[0,2].set_ylabel("z [km]")
 axs[1,0].set_ylabel("vx [m/s]"); axs[1,1].set_ylabel("vy [m/s]"); axs[1,2].set_ylabel("vz [m/s]")
 axs[1,0].set_xlabel("Time [hr]"); axs[1,1].set_xlabel("Time [hr]"); axs[1,2].set_xlabel("Time [hr]")
-
 axs[0,0].legend(ncol=2)
 plt.tight_layout()
 plt.show(block=False)
 
-mu = mu_earth
-
+# ---------- Energy and angular momentum ----------
 plt.figure(figsize=(10,4), dpi=125)
 for name in sat_names:
     r, v = rv[name]
@@ -219,153 +245,17 @@ plt.legend(ncol=2)
 plt.tight_layout()
 plt.show(block=False)
 
-# r0, v0 = rv[mothership_name]
-# r0n = np.linalg.norm(r0, axis=1)
-# h0  = np.cross(r0, v0)
-# h0n = np.linalg.norm(h0, axis=1)
-
-# Rhat = r0 / r0n[:,None]
-# Chat = h0 / h0n[:,None]
-# Ihat = np.cross(Chat, Rhat)
-
-# def project(vec):
-#     dR = np.einsum("ij,ij->i", vec, Rhat)
-#     dI = np.einsum("ij,ij->i", vec, Ihat)
-#     dC = np.einsum("ij,ij->i", vec, Chat)
-#     return dR, dI, dC
-
-# fig, axs = plt.subplots(3, 1, figsize=(10,8), sharex=True, dpi=125)
-
-# for name in sat_names:
-#     if name == mothership_name:
-#         continue
-#     r, v = rv[name]
-#     dr = r - r0
-#     dR, dI, dC = project(dr)
-#     axs[0].plot(t_hours, dR/1e3, label=name)
-#     axs[1].plot(t_hours, dI/1e3, label=name)
-#     axs[2].plot(t_hours, dC/1e3, label=name)
-
-# axs[0].set_ylabel("ΔR [km] (radial)")
-# axs[1].set_ylabel("ΔI [km] (in-track)")
-# axs[2].set_ylabel("ΔC [km] (cross-track)")
-# axs[2].set_xlabel("Time [hr]")
-# axs[0].set_title("Deputy relative position in RIC frame")
-# axs[0].legend(ncol=2)
-# plt.tight_layout()
-# plt.show(block=False)
-
-# plt.figure(figsize=(6,6), dpi=125)
-# for name in sat_names:
-#     if name == mothership_name:
-#         continue
-#     r, v = rv[name]
-#     dr = r - r0
-#     dR, dI, dC = project(dr)
-#     plt.plot(dR/1e3, dI/1e3, label=name)
-
-# plt.xlabel("ΔR [km]")
-# plt.ylabel("ΔI [km]")
-# plt.title("In-plane relative motion (ΔI vs ΔR)")
-# plt.legend()
-# plt.axis("equal")
-# plt.tight_layout()
-# plt.show()
-
-
-# Sanity-check diagnostics
-mu = mu_earth
-
-def cartesian_to_classical_elements(r, v, mu):
-    """
-    Vectorized conversion from Cartesian state to (a, e) for sanity checks.
-    r, v: arrays of shape (N,3)
-    returns: a (N,), e (N,)
-    """
-    rnorm = np.linalg.norm(r, axis=1)
-    vnorm = np.linalg.norm(v, axis=1)
-
-    # specific mechanical energy
-    eps = 0.5 * vnorm**2 - mu / rnorm
-    a = -mu / (2.0 * eps)  # semi-major axis (m)
-
-    # eccentricity vector
-    h = np.cross(r, v)  # (N,3)
-    e_vec = (np.cross(v, h) / mu) - (r / rnorm[:, None])
-    e = np.linalg.norm(e_vec, axis=1)
-
-    return a, e, eps, h
-
-
-# --- 1) a(t) and e(t) for each satellite ---
-plt.figure(figsize=(10,4), dpi=125)
-for name in sat_names:
-    r, v = rv[name]
-    a, e, eps, h = cartesian_to_classical_elements(r, v, mu)
-    plt.plot(t_hours, a/1e3, label=name)
-plt.xlabel("Time [hr]")
-plt.ylabel("a [km]")
-plt.title("Semi-major axis vs time (should be ~constant in 2-body)")
-plt.legend(ncol=2)
-plt.tight_layout()
-plt.show(block=False)
-
-plt.figure(figsize=(10,4), dpi=125)
-for name in sat_names:
-    r, v = rv[name]
-    a, e, eps, h = cartesian_to_classical_elements(r, v, mu)
-    plt.plot(t_hours, e, label=name)
-plt.xlabel("Time [hr]")
-plt.ylabel("e [-]")
-plt.title("Eccentricity vs time (should be ~constant in 2-body)")
-plt.legend(ncol=2)
-plt.tight_layout()
-plt.show(block=False)
-
-
-# --- 2) Normalized energy and angular momentum drift (easy to interpret) ---
-plt.figure(figsize=(10,4), dpi=125)
-for name in sat_names:
-    r, v = rv[name]
-    a, e, eps, h = cartesian_to_classical_elements(r, v, mu)
-    eps0 = eps[0]
-    drift = (eps - eps0) / abs(eps0)  # dimensionless
-    plt.plot(t_hours, drift, label=name)
-plt.xlabel("Time [hr]")
-plt.ylabel("(ε - ε₀)/|ε₀| [-]")
-plt.title("Normalized specific energy drift (numerical stability check)")
-plt.legend(ncol=2)
-plt.tight_layout()
-plt.show(block=False)
-
-plt.figure(figsize=(10,4), dpi=125)
-for name in sat_names:
-    r, v = rv[name]
-    a, e, eps, h = cartesian_to_classical_elements(r, v, mu)
-    hnorm = np.linalg.norm(h, axis=1)
-    h0 = hnorm[0]
-    drift = (hnorm - h0) / h0
-    plt.plot(t_hours, drift, label=name)
-plt.xlabel("Time [hr]")
-plt.ylabel("(||h|| - ||h||₀)/||h||₀ [-]")
-plt.title("Normalized angular momentum drift (numerical stability check)")
-plt.legend(ncol=2)
-plt.tight_layout()
-plt.show(block=False)
-
-
-# --- 3) Formation sanity checks: separation from mothership and max separation ---
-r0, v0 = rv[mothership_name]
+# ---------- Formation separation to mothership ----------
+rC, vC = rv[mothership_name]
 plt.figure(figsize=(10,4), dpi=125)
 max_sep = 0.0
 for name in sat_names:
     if name == mothership_name:
         continue
     r, v = rv[name]
-    dr = r - r0
-    sep = np.linalg.norm(dr, axis=1) / 1e3  # km
-    max_sep = max(max_sep, np.max(sep))
-    plt.plot(t_hours, sep, label=name)
+    sep_km = np.linalg.norm(r - rC, axis=1) / 1e3
+    max_sep = max(max_sep, np.max(sep_km))
+    plt.plot(t_hours, sep_km, label=name)
 
 plt.xlabel("Time [hr]")
 plt.ylabel("Separation to mothership [km]")
@@ -374,15 +264,13 @@ plt.legend(ncol=2)
 plt.tight_layout()
 plt.show()
 
-# Pairwise max separation (optional quick number)
+# ---------- Pairwise max separation ----------
 pairwise_max = 0.0
 for i, ni in enumerate(sat_names):
     ri, vi = rv[ni]
     for j in range(i+1, len(sat_names)):
         nj = sat_names[j]
         rj, vj = rv[nj]
-        sep_ij = np.linalg.norm(ri - rj, axis=1)
-        pairwise_max = max(pairwise_max, np.max(sep_ij))
+        pairwise_max = max(pairwise_max, np.max(np.linalg.norm(ri - rj, axis=1)))
 
 print(f"Max pairwise separation over run: {pairwise_max/1e3:.3f} km")
-
