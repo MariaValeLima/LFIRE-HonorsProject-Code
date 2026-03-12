@@ -1,15 +1,18 @@
 # formation_frames.py
 import numpy as np
 
+##computes the norm of a vector
 def unit(vec):
     n = np.linalg.norm(vec)
-    if n == 0:
-        raise ValueError("Zero-norm vector")
     return vec / n
 
+#Builds the LVLH rotation matrices
 def lvlh_dcm_from_rv(r_eci, v_eci):
-    r = np.asarray(r_eci).reshape(3)
-    v = np.asarray(v_eci).reshape(3)
+    #Ensures its the correct size
+    #r = np.asarray(r_eci).reshape(3)
+    #v = np.asarray(v_eci).reshape(3)
+    r=r_eci
+    v=v_eci
 
     Rhat = unit(r)
     h = np.cross(r, v)
@@ -17,17 +20,21 @@ def lvlh_dcm_from_rv(r_eci, v_eci):
     Ihat = unit(np.cross(Chat, Rhat))
 
     C_LVLH_to_ECI = np.column_stack((Rhat, Ihat, Chat))
+    #Because its orthonomal
     C_ECI_to_LVLH = C_LVLH_to_ECI.T
 
     return C_LVLH_to_ECI, C_ECI_to_LVLH
 
 def lvlh_to_eci(C_LVLH_to_ECI, vec_lvlh):
+    #creates a 3x3 matrix who's columns are LVLH basis vectors expressed in ECI
     return C_LVLH_to_ECI @ np.asarray(vec_lvlh).reshape(3)
 
 def eci_to_lvlh(C_ECI_to_LVLH, vec_eci):
+    
     return C_ECI_to_LVLH @ np.asarray(vec_eci).reshape(3)
 
 def apply_relative_state_lvlh(r0_eci, v0_eci, dr_lvlh, dv_lvlh):
+    #builds r and v from LVLH frame
     C_LVLH_to_ECI, _ = lvlh_dcm_from_rv(r0_eci, v0_eci)
 
     r_i = r0_eci + lvlh_to_eci(C_LVLH_to_ECI, dr_lvlh)

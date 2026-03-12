@@ -33,11 +33,13 @@ base_kepler = dict(
 )
 
 initial_state = build_swarm_initial_state(
-    mu_earth=mu_earth,
-    base_kepler=base_kepler,
-    R=15e3,
-    thetas_rad=np.deg2rad([0, 90, 180, 270])
+    mu_earth,
+    base_kepler,
+    radius=15e3,
+    thetas_rad=np.deg2rad([0, 90, 180, 270]),
+    plane="SW"
 )
+
 
 propagator_settings = make_propagator_settings(
     bodies=bodies,
