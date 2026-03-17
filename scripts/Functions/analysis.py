@@ -18,3 +18,12 @@ def max_pairwise_separation(rv: dict, sat_names: list[str]) -> float:
             rj, _ = rv[sat_names[j]]
             pairwise_max = max(pairwise_max, float(np.max(np.linalg.norm(ri - rj, axis=1))))
     return pairwise_max
+
+def swarm_dispersion(rv, sat_names, mothership_name):
+    r0, _ = rv[mothership_name]
+    deputies = [n for n in sat_names if n != mothership_name]
+    dispersion = np.zeros(r0.shape[0])
+    for name in deputies:
+        r_i, _ = rv[name]
+        dispersion += np.sum((r_i - r0)**2, axis=1)
+    return dispersion

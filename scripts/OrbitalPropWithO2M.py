@@ -21,12 +21,13 @@ from tudatpy.interface import spice
 from tudatpy.astro.time_representation import DateTime
 from Functions.sim_setup import make_bodies, make_propagator_settings, run_simulation
 from Functions.initial_conditions import build_swarm_initial_state
-from Functions.postprocess import extract_time_arrays, extract_rv
+from Functions.postprocess import extract_time_arrays, extract_rv, rv_to_kepler
 from Functions.plotting import (
     plot_eci_3d, plot_radius_norm, plot_speed_norm, plot_components,
     plot_energy, plot_ang_momentum, plot_separation_to_mothership
 )
 from Functions.analysis import max_pairwise_separation
+from Functions.plotting import plot_osculating_oe, plot_osc_vs_mean_oe, plot_delta_oe, plot_relative_planar, plot_relative_lvlh, plot_swarm_dispersion
 
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
@@ -79,14 +80,33 @@ Ts           = float(t[1] - t[0])
 print(f"  {N} timesteps,  dt={Ts:.1f} s,  duration={t_hours[-1]:.2f} h")
 
 
-plot_eci_3d(rv, sat_names, title="Swarm trajectories (ECI)")
-plot_radius_norm(rv, sat_names, t_hours)
-plot_speed_norm(rv, sat_names, t_hours)
-plot_components(rv, sat_names, t_hours)
-plot_energy(rv, sat_names, t_hours, mu=mu_earth)
-plot_ang_momentum(rv, sat_names, t_hours)
-plot_separation_to_mothership(rv, sat_names, t_hours, mothership_name)
+OE_labels = ["$a$ (m)", "$e$", "$i$ (rad)", r"$\Omega$ (rad)", r"$\omega$ (rad)", r"$\nu$ (rad)"]
+OE_names  = ["Semi-major axis", "Eccentricity", "Inclination", "RAAN", "Arg. of perigee", "True anomaly"]
 
+OE_osc = {}
+for name in sat_names:
+    r_arr, v_arr = rv[name]
+    oe = np.zeros((6, len(t)))
+    for k in range(len(t)):
+        oe[:, k] = rv_to_kepler(r_arr[k], v_arr[k])
+    OE_osc[name] = oe
+
+
+plot_eci_3d(rv, sat_names, title="Swarm trajectories (ECI)")
+#plot_radius_norm(rv, sat_names, t_hours)
+#plot_speed_norm(rv, sat_names, t_hours)
+#plot_components(rv, sat_names, t_hours)
+#plot_energy(rv, sat_names, t_hours, mu=mu_earth)
+#plot_ang_momentum(rv, sat_names, t_hours)
+#plot_separation_to_mothership(rv, sat_names, t_hours, mothership_name)
+
+
+plot_osculating_oe(OE_osc, sat_names, t_hours)
+#plot_osc_vs_mean_oe(OE_osc, OE_mean, sat_names, t_hours)
+#plot_delta_oe(OE_mean, sat_names, t_hours, mothership_name)
+
+plot_relative_lvlh(rv, mothership_name, "LFIRE-3", t_hours, plane="all")
+#plot_swarm_dispersion(rv, sat_names, t_hours, mothership_name)
 print("Max pairwise separation [km]:", max_pairwise_separation(rv, sat_names)/1e3)
 
 
