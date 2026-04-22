@@ -34,10 +34,19 @@ def eci_to_lvlh(C_ECI_to_LVLH, vec_eci):
     return C_ECI_to_LVLH @ np.asarray(vec_eci).reshape(3)
 
 def apply_relative_state_lvlh(r0_eci, v0_eci, dr_lvlh, dv_lvlh):
-    #builds r and v from LVLH frame
     C_LVLH_to_ECI, _ = lvlh_dcm_from_rv(r0_eci, v0_eci)
 
-    r_i = r0_eci + lvlh_to_eci(C_LVLH_to_ECI, dr_lvlh)
-    v_i = v0_eci + lvlh_to_eci(C_LVLH_to_ECI, dv_lvlh)
+    dr_eci = lvlh_to_eci(C_LVLH_to_ECI, dr_lvlh)
+    dv_eci = lvlh_to_eci(C_LVLH_to_ECI, dv_lvlh)
+
+    # # Angular velocity of LVLH frame: omega = h / |r|^2
+    #h_vec = np.cross(r0_eci, v0_eci)
+    #omega = h_vec / np.dot(r0_eci, r0_eci)   # rad/s
+
+    # # Add the frame rotation correction: omega x dr
+    #v_frame_correction = np.cross(omega, dr_eci)
+
+    r_i = r0_eci + dr_eci
+    v_i = v0_eci + dv_eci 
 
     return r_i, v_i

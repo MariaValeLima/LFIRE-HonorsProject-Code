@@ -1,7 +1,9 @@
 # Functions/plotting.py
 import numpy as np
 from matplotlib import pyplot as plt
-from Functions.analysis import specific_energy, ang_momentum_mag, swarm_dispersion
+from Functions.analysis import (specific_energy, ang_momentum_mag,
+                                swarm_dispersion_lvlh,
+                                satellite_distances_from_mothership)
 from Functions.formation_frames import lvlh_dcm_from_rv, eci_to_lvlh
 
 
@@ -87,8 +89,8 @@ def plot_separation_to_mothership(rv, sat_names, t_hours, mothership_name):
     plt.legend(ncol=2); plt.tight_layout(); plt.show(block=False)
 
 def plot_osculating_oe(OE_osc, sat_names, t_hours, save_dir=None):
-    OE_labels = ["$a$ (m)", "$u$ (rad)", "$e_x$", "$e_y$", "$i$ (rad)", r"$\Omega$ (rad)"]
-    OE_names  = ["Semi-major axis", "Arg. of latitude", "ex", "ey", "Inclination", "RAAN"]
+    OE_labels = ["$a$ (m)", "$e$", "$i$ (rad)", r"$\Omega$ (rad)", r"$\omega$ (rad)", r"$\nu$ (rad)"]
+    OE_names  = ["Semi-major axis", "Eccentricity", "Inclination", "RAAN", "Arg. of periapsis", "True anomaly"]
     colors    = plt.cm.tab10(np.linspace(0, 1, len(sat_names)))
 
     fig, axes = plt.subplots(2, 3, figsize=(14, 7))
@@ -191,13 +193,13 @@ def plot_relative_lvlh(rv, ref_name, deputy_name, t_hours, plane="RT"):
         dr_lvlh[i] = eci_to_lvlh(C_ECI_to_LVLH, r_dep[i] - r_ref[i])
 
     dR = dr_lvlh[:, 0] / 1e3
-    dT = dr_lvlh[:, 1] / 1e3
-    dN = dr_lvlh[:, 2] / 1e3
+    dS = dr_lvlh[:, 1] / 1e3
+    dW = dr_lvlh[:, 2] / 1e3
 
     axes_map = {
-        "RT": (dT, dR, "Along-track T [km]", "Radial R [km]"),
-        "RN": (dN, dR, "Normal N [km]",      "Radial R [km]"),
-        "TN": (dN, dT, "Normal N [km]",      "Along-track T [km]"),
+    "RS": (dS, dR, "Along-track S [km]", "Radial R [km]"),   
+    "RW": (dR, dW, "Radial R [km]",      "Cross-track W [km]"),  
+    "SW": (dS, dW, "Along-track S [km]", "Cross-track W [km]"),  
     }
 
     def _single(ax, x, y, xlabel, ylabel):
@@ -227,7 +229,51 @@ def plot_relative_lvlh(rv, ref_name, deputy_name, t_hours, plane="RT"):
 
 
 def plot_swarm_dispersion(rv, sat_names, t_hours, mothership_name):
-    dispersion = swarm_dispersion(rv, sat_names, mothership_name)
+    dists = satellite_distances_from_mothership(rv, sat_names, mothership_name)
+
+    # Plot 1: per-satellite deviation from initial distance
+    plt.figure(figsize=(10, 4), dpi=125)
+    for name, d in dists.items():
+        plt.plot(t_hours, (d - d[0]) / 1e3, label=name)
+    plt.axhline(0, color="k", linewidth=0.6, linestyle="--")
+    plt.xlabel("Time [hr]")
+    plt.ylabel("Distance deviation from initial [km]")
+    plt.title("Swarm dispersion relative to LFIRE-0 — per satellite")
+    plt.legend(ncol=2)
+    plt.tight_layout()
+    plt.show()
+
+    # Plot 2: aggregate squared deviation
+    agg = sum((d - d[0])**2 for d in dists.values())
+    plt.figure(figsize=(10, 4), dpi=125)
+    plt.plot(t_hours, agg / 1e6)           # m² -> km²
+    plt.xlabel("Time [hr]")
+    plt.ylabel(r"$\sum (d_i - d_{i,0})^2$ [km²]")
+    plt.title("Swarm dispersion relative to LFIRE-0 — aggregate")
+    plt.tight_layout()
+    plt.show()
+
+def plot_neighbor_distances(rv, sat_names, t_hours, mothership_name):
+    deputies = [n for n in sat_names if n != mothership_name]
+    # Adjacent pairs around the ring: 1-2, 2-3, 3-4, 4-1
+    pairs = [(deputies[i], deputies[(i + 1) % len(deputies)]) for i in range(len(deputies))]
+
+    plt.figure(figsize=(10, 4), dpi=125)
+    for a, b in pairs:
+        ra, _ = rv[a]
+        rb, _ = rv[b]
+        d = np.linalg.norm(ra - rb, axis=1)
+        plt.plot(t_hours, (d - d[0]) / 1e3, label=f"{a}↔{b}")
+    plt.axhline(0, color="k", linewidth=0.6, linestyle="--")
+    plt.xlabel("Time [hr]")
+    plt.ylabel("Distance deviation from initial [km]")
+    plt.title("Neighbour separation deviation (adjacent pairs)")
+    plt.legend(ncol=2)
+    plt.tight_layout()
+    plt.show()
+
+def plot_swarm_dispersion_LVLH(rv, sat_names, t_hours, mothership_name):
+    dispersion = swarm_dispersion_lvlh(rv, sat_names, mothership_name)
     plt.figure(figsize=(10, 4), dpi=125)
     plt.plot(t_hours, dispersion / 1e6)   # m² -> km²
     plt.xlabel("Time [hr]")

@@ -1,13 +1,3 @@
-"""
-step1_propagate.py
-Run this in the tudat-space environment:
-    conda activate tudat-space
-    cd "C:/projects/Honors Project/TUDAT shtuff/scripts"
-    python step1_propagate.py
-
-Propagates the LFIRE swarm and saves the state history to a .npz file
-which can then be loaded by step2_o2m.py in the base environment.
-"""
 
 import sys
 from pathlib import Path
@@ -27,17 +17,19 @@ from Functions.plotting import (
     plot_energy, plot_ang_momentum, plot_separation_to_mothership
 )
 from Functions.analysis import max_pairwise_separation
-from Functions.plotting import plot_osculating_oe, plot_osc_vs_mean_oe, plot_delta_oe, plot_relative_planar, plot_relative_lvlh, plot_swarm_dispersion
+from Functions.plotting import plot_osculating_oe, plot_osc_vs_mean_oe, plot_delta_oe, plot_relative_planar, plot_relative_lvlh, plot_swarm_dispersion, plot_swarm_dispersion_LVLH, plot_neighbor_distances
 
 
-# ── Setup ─────────────────────────────────────────────────────────────────────
+#Setup of the eviroment 
 spice.load_standard_kernels()
 
 simulation_start_epoch = DateTime(2026, 1, 14).to_epoch()
-simulation_end_epoch   = simulation_start_epoch + 6 * 3600
+simulation_end_epoch   = simulation_start_epoch + 60* 3600
 #simulation_end_epoch   = DateTime(2026, 1, 14).to_epoch()
-duration = simulation_end_epoch - simulation_start_epoch
-print(duration)
+
+#In case we want to check the duration 
+#duration = simulation_end_epoch - simulation_start_epoch
+#print(duration)
 
 mothership_name = "LFIRE-0"
 deputy_names    = [f"LFIRE-{i}" for i in range(1, 5)]
@@ -71,7 +63,7 @@ propagator_settings = make_propagator_settings(
 )
 
 # ── Propagate ─────────────────────────────────────────────────────────────────
-print("Propagating...")
+print("Propagating")
 states_array = run_simulation(bodies, propagator_settings)
 t, t_hours   = extract_time_arrays(states_array)
 rv           = extract_rv(states_array, sat_names)
@@ -105,8 +97,10 @@ plot_osculating_oe(OE_osc, sat_names, t_hours)
 #plot_osc_vs_mean_oe(OE_osc, OE_mean, sat_names, t_hours)
 #plot_delta_oe(OE_mean, sat_names, t_hours, mothership_name)
 
-plot_relative_lvlh(rv, mothership_name, "LFIRE-3", t_hours, plane="all")
-#plot_swarm_dispersion(rv, sat_names, t_hours, mothership_name)
+plot_relative_lvlh(rv, mothership_name, "LFIRE-4", t_hours, plane="all")
+plot_swarm_dispersion(rv, sat_names, t_hours, mothership_name)
+plot_neighbor_distances(rv, sat_names, t_hours, mothership_name)
+plot_swarm_dispersion_LVLH(rv, sat_names, t_hours, mothership_name)
 print("Max pairwise separation [km]:", max_pairwise_separation(rv, sat_names)/1e3)
 
 
