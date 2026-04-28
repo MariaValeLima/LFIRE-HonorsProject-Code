@@ -39,14 +39,14 @@ def apply_relative_state_lvlh(r0_eci, v0_eci, dr_lvlh, dv_lvlh):
     dr_eci = lvlh_to_eci(C_LVLH_to_ECI, dr_lvlh)
     dv_eci = lvlh_to_eci(C_LVLH_to_ECI, dv_lvlh)
 
-    # # Angular velocity of LVLH frame: omega = h / |r|^2
-    #h_vec = np.cross(r0_eci, v0_eci)
-    #omega = h_vec / np.dot(r0_eci, r0_eci)   # rad/s
+    # Angular velocity of LVLH frame: omega = h / |r|^2
+    h_vec = np.cross(r0_eci, v0_eci)
+    omega = h_vec / np.dot(r0_eci, r0_eci)   # rad/s
 
-    # # Add the frame rotation correction: omega x dr
-    #v_frame_correction = np.cross(omega, dr_eci)
+    # Frame rotation correction: omega x dr (transport theorem)
+    v_frame_correction = np.cross(omega, dr_eci)
 
     r_i = r0_eci + dr_eci
-    v_i = v0_eci + dv_eci 
+    v_i = v0_eci + dv_eci + v_frame_correction
 
     return r_i, v_i
