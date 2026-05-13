@@ -10,15 +10,18 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 from tudatpy.interface import spice
 from tudatpy.astro.time_representation import DateTime
 from Functions.sim_setup import make_bodies, make_propagator_settings, run_simulation
-from Functions.initial_conditions import build_swarm_initial_state
+from Functions.initial_conditions import (
+    build_swarm_initial_state,
+    build_swarm_initial_state_optimized_oe
+)
 from Functions.postprocess import extract_time_arrays, extract_rv, rv_to_kepler
 from Functions.plotting import (
     plot_eci_3d, plot_radius_norm, plot_speed_norm, plot_components,
-    plot_energy, plot_ang_momentum, plot_separation_to_mothership
+    plot_energy, plot_ang_momentum, plot_separation_to_mothership, plot_single_sat_lvlh_components
 )
 from Functions.analysis import max_pairwise_separation
-from Functions.plotting import plot_osculating_oe, plot_osc_vs_mean_oe, plot_delta_oe, plot_relative_planar, plot_relative_lvlh, plot_swarm_dispersion, plot_swarm_dispersion_LVLH, plot_neighbor_distances
-
+from Functions.plotting import plot_osculating_oe, check_initial_states_lvlh, plot_osc_vs_mean_oe, plot_delta_oe, plot_relative_planar, plot_relative_lvlh, plot_swarm_dispersion, plot_swarm_dispersion_LVLH, plot_neighbor_distances, plot_initial_relative_positions
+from Functions.sim_setup import make_bodies, make_propagator_settings_twobody, run_simulation
 
 #Setup of the eviroment 
 spice.load_standard_kernels()
@@ -46,15 +49,62 @@ base_kepler = dict(
     longitude_of_ascending_node = 3.82958313e-01,
     true_anomaly                = 3.07018490e+00,
 )
+use_oe_optimization = 1   # 0 = old direct LVLH, 1 = new OE optimization
 
-initial_state = build_swarm_initial_state(
-    mu_earth, base_kepler,
-    radius=15e3,
-    thetas_rad=np.deg2rad([0, 90, 180, 270]),
-    plane="SW"
+if use_oe_optimization == 0:
+
+    initial_state = build_swarm_initial_state(
+        mu_earth,
+        base_kepler,
+        radius=15e3,
+        thetas_rad=np.deg2rad([0, 90, 180, 270]),
+        plane="SW"
+    )
+
+elif use_oe_optimization == 1:
+
+    desired_lvlh_offsets = np.array([
+        [0.0,  15e3,  0.0],
+        [0.0,   0.0, 15e3],
+        [0.0, -15e3,  0.0],
+        [0.0,   0.0,-15e3],
+    ])
+
+    initial_state, opt_results = build_swarm_initial_state_optimized_oe(
+        mu_earth,
+        base_kepler,
+        desired_lvlh_offsets,
+        weights=np.array([1.0, 1.0, 1.0]),
+        return_optimizer_results=True
+    )
+
+    print("\n--- OE optimization results ---")
+    for k, info in enumerate(opt_results, start=1):
+        print(f"LFIRE-{k}")
+        print(f"  success      = {info['success']}")
+        print(f"  delta_Omega  = {info['delta_Omega']:.8e} rad")
+        print(f"  delta_M      = {info['delta_M']:.8e} rad")
+        print(f"  desired LVLH = {info['rho_desired']}")
+        print(f"  achieved LVLH= {info['rho_achieved']}")
+        print(f"  error LVLH   = {info['rho_error']}")
+        print(f"  cost         = {info['cost']:.8e}")
+
+else:
+    raise ValueError("use_oe_optimization must be 0 or 1")
+
+
+initial_states_dict = {
+    name: initial_state[i*6:(i+1)*6]
+    for i, name in enumerate(sat_names)
+}
+
+check_initial_states_lvlh(
+    initial_states_dict,
+    sat_names,
+    mothership_name
 )
 
-propagator_settings = make_propagator_settings(
+propagator_settings = make_propagator_settings_twobody(
     bodies=bodies, sat_names=sat_names,
     initial_state=initial_state,
     t0=simulation_start_epoch,
@@ -84,6 +134,9 @@ for name in sat_names:
     OE_osc[name] = oe
 
 
+rv_initial = {name: np.concatenate([r[0], v[0]]) for name, (r, v) in rv.items()}
+check_initial_states_lvlh(rv_initial, sat_names, mothership_name)
+
 plot_eci_3d(rv, sat_names, title="Swarm trajectories (ECI)")
 #plot_radius_norm(rv, sat_names, t_hours)
 #plot_speed_norm(rv, sat_names, t_hours)
@@ -98,6 +151,7 @@ plot_osculating_oe(OE_osc, sat_names, t_hours)
 #plot_delta_oe(OE_mean, sat_names, t_hours, mothership_name)
 
 plot_relative_lvlh(rv, mothership_name, "LFIRE-4", t_hours, plane="all")
+plot_single_sat_lvlh_components(rv, "LFIRE-4", mothership_name, t_hours)
 plot_swarm_dispersion(rv, sat_names, t_hours, mothership_name)
 plot_neighbor_distances(rv, sat_names, t_hours, mothership_name)
 plot_swarm_dispersion_LVLH(rv, sat_names, t_hours, mothership_name)

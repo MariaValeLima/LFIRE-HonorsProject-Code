@@ -2,7 +2,7 @@
 import numpy as np
 from tudatpy.astro import element_conversion
 from Functions.formation_frames import apply_relative_state_lvlh
-from Functions.oe_spacing_optimizer import solve_delta_omega_M_for_lvlh_target
+from Functions.oe_spacing_optimizer_new import solve_delta_Omega_M_for_lvlh_target
 
 def build_swarm_initial_state(
     mu_earth,
@@ -95,15 +95,14 @@ def build_swarm_initial_state_optimized_oe(
     base_kepler,
     desired_lvlh_offsets,
     weights=None,
-    beta_e=0.0,
     return_optimizer_results=False
 ):
     """
     New method:
-    desired LVLH offsets -> optimize delta omega and delta M
+    desired LVLH offsets -> optimize delta Omega and delta M
     -> build deputy states from orbital elements.
 
-    Keeps a,e,i,Omega fixed and changes only omega and M.
+    Keeps a, e, i, omega fixed and changes only RAAN (Omega) and M.
     """
 
     state0 = element_conversion.keplerian_to_cartesian_elementwise(
@@ -115,12 +114,11 @@ def build_swarm_initial_state_optimized_oe(
     opt_results = []
 
     for rho_desired in desired_lvlh_offsets:
-        state_i, info = solve_delta_omega_M_for_lvlh_target(
+        state_i, info = solve_delta_Omega_M_for_lvlh_target(
             mu_earth=mu_earth,
             base_kepler=base_kepler,
             rho_desired=np.asarray(rho_desired, dtype=float),
             weights=weights,
-            beta_e=beta_e
         )
 
         initial_states_list.append(state_i)
@@ -132,3 +130,5 @@ def build_swarm_initial_state_optimized_oe(
         return initial_state, opt_results
 
     return initial_state
+
+

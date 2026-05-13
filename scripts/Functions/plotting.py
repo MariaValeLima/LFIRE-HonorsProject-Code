@@ -6,7 +6,6 @@ from Functions.analysis import (specific_energy, ang_momentum_mag,
                                 satellite_distances_from_mothership)
 from Functions.formation_frames import lvlh_dcm_from_rv, eci_to_lvlh
 
-
 def plot_eci_3d(rv, sat_names, title="ECI trajectories"):
     fig = plt.figure(figsize=(6, 6), dpi=125)
     ax = fig.add_subplot(111, projection="3d")
@@ -197,9 +196,9 @@ def plot_relative_lvlh(rv, ref_name, deputy_name, t_hours, plane="RT"):
     dW = dr_lvlh[:, 2] / 1e3
 
     axes_map = {
-    "RS": (dS, dR, "Along-track S [km]", "Radial R [km]"),   
-    "RW": (dR, dW, "Radial R [km]",      "Cross-track W [km]"),  
-    "SW": (dS, dW, "Along-track S [km]", "Cross-track W [km]"),  
+    "RS": (dS, dR, "Along-track S [km]", "Radial R [km]"),
+    "RW": (dR, dW, "Radial R [km]",      "Cross-track W [km]"),
+    "SW": (dS, dW, "Along-track S [km]", "Cross-track W [km]"),
     }
 
     def _single(ax, x, y, xlabel, ylabel):
@@ -227,7 +226,33 @@ def plot_relative_lvlh(rv, ref_name, deputy_name, t_hours, plane="RT"):
 
     plt.show()
 
+def plot_single_sat_lvlh_components(rv, sat_name, mothership_name, t_hours):
+    r0, v0 = rv[mothership_name]
+    rd, vd = rv[sat_name]
 
+    R, S, W = [], [], []
+
+    for k in range(len(t_hours)):
+        _, C = lvlh_dcm_from_rv(r0[k], v0[k])
+        dr_lvlh = C @ (rd[k] - r0[k])
+
+        R.append(dr_lvlh[0] / 1e3)
+        S.append(dr_lvlh[1] / 1e3)
+        W.append(dr_lvlh[2] / 1e3)
+
+    plt.figure(figsize=(11, 5), dpi=125)
+    plt.plot(t_hours, R, label="R radial")
+    plt.plot(t_hours, S, label="S along-track")
+    plt.plot(t_hours, W, label="W cross-track")
+    plt.axhline(0, color="k", linestyle="--", linewidth=0.7)
+    plt.xlabel("Time [hr]")
+    plt.ylabel("LVLH component [km]")
+    plt.title(f"{sat_name} LVLH components relative to {mothership_name}")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+    
 def plot_swarm_dispersion(rv, sat_names, t_hours, mothership_name):
     dists = satellite_distances_from_mothership(rv, sat_names, mothership_name)
 
@@ -281,3 +306,92 @@ def plot_swarm_dispersion_LVLH(rv, sat_names, t_hours, mothership_name):
     plt.title("Swarm dispersion relative to LFIRE-0")
     plt.tight_layout()
     plt.show()
+
+
+def plot_initial_relative_positions(rv, sat_names, mothership_name):
+    r0, v0 = rv[mothership_name]
+    _, C = lvlh_dcm_from_rv(r0[0], v0[0])
+
+    deputies = [n for n in sat_names if n != mothership_name]
+    positions = {}
+    for name in deputies:
+        r_dep, _ = rv[name]
+        positions[name] = eci_to_lvlh(C, r_dep[0] - r0[0]) / 1e3  # m → km
+
+    planes = [("R", "S", 0, 1), ("R", "W", 0, 2), ("S", "W", 1, 2)]
+
+    fig, axes = plt.subplots(1, 3, figsize=(13, 4), dpi=125)
+    fig.suptitle("Initial positions (LVLH, t=0)")
+
+    for ax, (xlabel, ylabel, xi, yi) in zip(axes, planes):
+        ax.scatter(0, 0, s=80, zorder=5, label=mothership_name)
+        for name, pos in positions.items():
+            ax.scatter(pos[xi], pos[yi], s=60, zorder=5)
+            ax.annotate(name, (pos[xi], pos[yi]),
+                        textcoords="offset points", xytext=(6, 4), fontsize=8)
+        ax.set_xlabel(f"{xlabel} [km]")
+        ax.set_ylabel(f"{ylabel} [km]")
+        ax.set_aspect("equal")
+        ax.grid(True, linewidth=0.5)
+        ax.axhline(0, color="k", linewidth=0.4)
+        ax.axvline(0, color="k", linewidth=0.4)
+
+    axes[0].legend(fontsize=8)
+    plt.tight_layout()
+    plt.show()
+
+def plot_relative_lvlh_components(rv, sat_names, mothership_name, t_hours):
+    r0, v0 = rv[mothership_name]
+
+    plt.figure(figsize=(11, 5), dpi=125)
+
+    for name in sat_names:
+        if name == mothership_name:
+            continue
+
+        rd, vd = rv[name]
+
+        x_radial = []
+        y_alongtrack = []
+        z_crosstrack = []
+
+        for k in range(len(t_hours)):
+            _, C = lvlh_dcm_from_rv(r0[k], v0[k])
+
+            dr_eci = rd[k] - r0[k]
+            dr_lvlh = eci_to_lvlh(C, dr_eci)
+
+            x_radial.append(dr_lvlh[0])
+            y_alongtrack.append(dr_lvlh[1])
+            z_crosstrack.append(dr_lvlh[2])
+
+        # plot along-track signed motion
+        plt.plot(t_hours, np.array(y_alongtrack) / 1e3, label=f"{name} along-track")
+
+    plt.axhline(0, color="k", linewidth=0.7, linestyle="--")
+    plt.xlabel("Time [hr]")
+    plt.ylabel("LVLH along-track separation [km]")
+    plt.title(f"Relative motion w.r.t. {mothership_name}")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+def check_initial_states_lvlh(rv_dict, sat_names, mothership_name):
+    r0 = rv_dict[mothership_name][:3]
+    v0 = rv_dict[mothership_name][3:]
+
+    print("\n--- LVLH positions AFTER conversion ---")
+
+    for name in sat_names:
+        if name == mothership_name:
+            continue
+
+        r = rv_dict[name][:3]
+
+        _, C = lvlh_dcm_from_rv(r0, v0)
+        dr_lvlh = C @ (r - r0)
+
+        print(f"{name}: R={dr_lvlh[0]/1e3:.2f} km, "
+              f"S={dr_lvlh[1]/1e3:.2f} km, "
+              f"W={dr_lvlh[2]/1e3:.2f} km")
