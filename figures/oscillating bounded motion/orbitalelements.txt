@@ -1,0 +1,16 @@
+── Initial Orbital Elements (before propagation) ──────────────────────────
+  Mothership 
+    a    = 6992.762 km  |  T = 96.991 min
+    e    = 0.004000
+    i    = 98.0131 deg
+    RAAN = 21.9419 deg
+    AoP  = 75.1875 deg
+    TA   = 175.9086 deg
+
+LFIRE-1  
+    a    = 6992.830 km  |  T = 96.993 min
+    e    = 0.004209
+    i    = 97.9734 deg
+    RAAN = 90.0228 deg
+    AoP  = 21.8239 deg
+    TA   = 161.1794 deg
